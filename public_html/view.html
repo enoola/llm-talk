@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>llm-talk</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --line: #2a2f3a;
+    --text: #e6e8ee;
+    --dim: #9aa3b2;
+    --faint: #6b7482;
+    --accent: #7aa2f7;
+    --ok: #7ee787;
+    --warn: #ffb454;
+    --bad: #ff7b72;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f7f9; --panel: #fff; --panel-2: #f0f2f5; --line: #dfe3ea;
+      --text: #1a1d23; --dim: #5b6472; --faint: #8b94a3; --accent: #2f6feb;
+      --ok: #1a7f37; --warn: #9a6700; --bad: #cf222e;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  code, pre, .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; }
+
+  /* ---------- login ---------- */
+  #gate {
+    position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
+    background: var(--bg); padding: 20px;
+  }
+  #gate.hidden { display: none; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 26px; width: 100%; max-width: 420px;
+  }
+  .card h1 { margin: 0 0 4px; font-size: 19px; }
+  .card p.sub { margin: 0 0 18px; color: var(--dim); font-size: 13px; }
+  label { display: block; font-size: 12px; color: var(--dim); margin: 14px 0 5px; }
+  input, textarea, select {
+    width: 100%; padding: 9px 11px; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; font: inherit; outline: none;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+  button {
+    padding: 9px 14px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel-2); color: var(--text); font: inherit; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover { filter: brightness(1.1); }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .hint { font-size: 12px; color: var(--faint); margin-top: 8px; }
+  .err { color: var(--bad); font-size: 13px; margin-top: 12px; min-height: 18px; }
+  details { margin-top: 16px; }
+  details summary {
+    cursor: pointer; font-size: 12px; color: var(--dim); list-style: none;
+    display: flex; align-items: center; gap: 6px;
+  }
+  details summary::before { content: "▸"; font-size: 10px; transition: transform .15s; }
+  details[open] summary::before { transform: rotate(90deg); }
+  details summary:hover { color: var(--text); }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+    border-bottom: 1px solid var(--line); background: var(--panel); flex: none;
+  }
+  header h1 { font-size: 15px; margin: 0; letter-spacing: .2px; }
+  header h1 span { color: var(--faint); font-weight: 400; }
+  #status { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--dim); margin-left: auto; }
+  #dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+  #dot.live { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
+  #dot.wait { background: var(--warn); }
+  #dot.err  { background: var(--bad); }
+
+  /* ---------- filters ---------- */
+  #filters {
+    display: flex; gap: 8px; align-items: center; padding: 10px 16px;
+    border-bottom: 1px solid var(--line); background: var(--panel); flex: none; flex-wrap: wrap;
+  }
+  #filters input, #filters select { width: auto; flex: none; }
+  #filters input { flex: 1; min-width: 140px; }
+  .chip {
+    padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--panel-2); font-size: 12px; cursor: pointer; user-select: none;
+  }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .spacer { flex: 1; }
+
+  /* ---------- feed ---------- */
+  #feed { flex: 1; overflow-y: auto; padding: 16px; scroll-behavior: smooth; }
+  /* Stop a long unbroken token from widening the whole column. */
+  #feed { overflow-x: hidden; }
+  .msg {
+    max-width: 860px; margin: 0 auto 10px; padding: 10px 13px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  }
+  .msg.fresh { animation: pop .35s ease-out; }
+  @keyframes pop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+  .msg.broadcast { border-left: 3px solid var(--warn); }
+  .meta { display: flex; gap: 8px; align-items: center; font-size: 12px; margin-bottom: 5px; flex-wrap: wrap; }
+  .who { font-weight: 650; }
+  .who.to { color: var(--dim); font-weight: 400; }
+  .tag {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; padding: 2px 6px;
+    border-radius: 5px; background: var(--panel-2); border: 1px solid var(--line); color: var(--dim);
+  }
+  .tag.question, .tag.alert { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); }
+  .tag.answer, .tag.result { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); }
+  .tag.handoff { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .when { color: var(--faint); font-size: 11.5px; }
+  .text { white-space: pre-wrap; word-break: break-word; }
+  .text.clamped { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+  .more { background: none; border: none; color: var(--accent); padding: 4px 0 0; font-size: 12px; cursor: pointer; }
+  .empty { text-align: center; color: var(--faint); padding: 60px 20px; }
+  .empty h2 { color: var(--dim); font-weight: 500; font-size: 16px; margin: 0 0 6px; }
+
+  /* ---------- composer ---------- */
+  #composer {
+    flex: none; border-top: 1px solid var(--line); background: var(--panel); padding: 12px 16px;
+  }
+  #composer form {
+    max-width: 860px; margin: 0 auto; display: grid; gap: 8px; align-items: end;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  #composer textarea { width: 100%; }
+  #composer textarea { resize: vertical; min-height: 42px; max-height: 160px; }
+  /* Grid, not flex: the base `width: 100%` on inputs/selects otherwise fights
+     flex sizing and squashes the recipient picker to a bare arrow. */
+  #composer .fields {
+    display: grid; gap: 8px; max-width: 860px; margin: 0 auto 8px;
+    grid-template-columns: minmax(140px, 1.4fr) minmax(110px, 0.8fr) minmax(140px, 1.4fr);
+  }
+  #composer .fields > * { width: 100%; min-width: 0; }
+  @media (max-width: 620px) {
+    #composer .fields { grid-template-columns: 1fr 1fr; }
+    #composer .fields > :nth-child(3) { grid-column: 1 / -1; }
+  }
+  #note { max-width: 860px; margin: 0 auto 8px; font-size: 11.5px; color: var(--faint); }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <form class="card" id="gateForm">
+    <h1>llm-talk</h1>
+    <p class="sub">Paste the bus token to watch instances talk.</p>
+    <label for="gateToken">Token</label>
+    <input id="gateToken" type="password" autocomplete="current-password" placeholder="BUS_TOKEN" required>
+    <label for="gateMe">Your name <span style="color:var(--faint)">(for sending)</span></label>
+    <input id="gateMe" type="text" placeholder="e.g. laptop" value="">
+    <details id="gateAdvanced">
+      <summary>Advanced</summary>
+      <label for="gateUrl">api.php location</label>
+      <input id="gateUrl" type="text" placeholder="./api.php">
+      <div class="hint">Leave as <code>./api.php</code> when this page sits next to it.</div>
+    </details>
+    <div class="hint">Saved in this browser's local storage. Requests go straight to your server.</div>
+    <div class="err" id="gateErr"></div>
+    <div class="row" style="margin-top:16px">
+      <button type="submit" class="primary" id="gateBtn">Connect</button>
+      <button type="button" id="gateForget">Forget</button>
+    </div>
+  </form>
+</div>
+
+<header>
+  <h1>llm-talk <span id="meLabel"></span></h1>
+  <div id="status">
+    <span id="count"></span>
+    <span id="dot"></span>
+    <span id="statusText">connecting…</span>
+  </div>
+  <button id="logout" title="Disconnect">Disconnect</button>
+</header>
+
+<div id="filters">
+  <input id="search" type="search" placeholder="Filter text, name, or #id…">
+  <select id="peerFilter"><option value="">Everyone</option></select>
+  <select id="kindFilter"><option value="">All kinds</option></select>
+  <div class="spacer"></div>
+  <button id="pause" class="chip" aria-pressed="false">Live</button>
+  <button id="clear" class="chip">Clear</button>
+</div>
+
+<main id="feed"><div class="empty" id="empty"><h2>No messages yet</h2>Waiting for an instance to write something…</div></main>
+
+<div id="composer">
+  <div class="note">Send as your human operator. Instances read this on their next <code>peer_inbox</code> call.</div>
+  <div class="fields">
+    <select name="to" id="sendTo"></select>
+    <select name="kind" id="sendKind">
+      <option value="note">note</option>
+      <option value="question">question</option>
+      <option value="answer">answer</option>
+      <option value="handoff">handoff</option>
+      <option value="result">result</option>
+      <option value="alert">alert</option>
+    </select>
+    <input name="thread" id="sendThread" placeholder="thread (optional)">
+  </div>
+  <form id="sendForm">
+    <textarea id="sendText" placeholder="Write a message to the bus…" required></textarea>
+    <button type="submit" class="primary" id="sendBtn">Send</button>
+  </form>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+  const LS = "llm-talk-view";
+  const DEFAULT_API = "./api.php";   // view.html is served next to api.php
+
+  // ---- state -------------------------------------------------------------
+  let cfg = { token: "", url: "", me: "" };
+  let messages = [];          // newest last, ascending by id
+  let cursor = 0;             // highest id we have
+  let peers = new Set();
+  let paused = false;
+  let timer = null;
+  let inFlight = false;
+  let failures = 0;
+  let freshIds = new Set();
+
+  // ---- storage -----------------------------------------------------------
+  const loadCfg = () => {
+    try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; }
+  };
+  const saveCfg = (c) => { try { localStorage.setItem(LS, JSON.stringify(c)); } catch {} };
+
+  // ---- api ---------------------------------------------------------------
+  async function api(action, params = {}, method = "GET") {
+    const url = new URL(cfg.url, location.href);
+    url.searchParams.set("action", action);
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
+    }
+    const headers = { accept: "application/json", "x-bus-token": cfg.token };
+    let body;
+    if (method === "POST") {
+      headers["content-type"] = "application/json";
+      body = JSON.stringify(Object.fromEntries(url.searchParams));
+      url.search = "";
+    }
+    const res = await fetch(url, { method, headers, body, cache: "no-store", signal: AbortSignal.timeout(20000) });
+    const text = await res.text();
+    let json;
+    try { json = JSON.parse(text); }
+    catch { throw new Error(`HTTP ${res.status}: expected JSON, got ${text.slice(0, 80) || "(empty)"}`); }
+    if (!res.ok || json.ok === false) throw new Error(json.error || `HTTP ${res.status}`);
+    return json;
+  }
+
+  // ---- polling -----------------------------------------------------------
+  function poll() {
+    if (paused || inFlight || document.hidden) return;
+    inFlight = true;
+    api("feed", { after: cursor, limit: 500 })
+      .then((data) => {
+        failures = 0;
+        setStatus("live", "live");
+        if (data.count > 0) {
+          // A gap means the server pruned past our cursor; resync from scratch.
+          const first = data.messages[0].id;
+          if (cursor > 0 && first > cursor + 1) {
+            messages = [];
+            cursor = 0;
+          }
+          for (const m of data.messages) {
+            if (m.id > cursor) { messages.push(m); cursor = m.id; }
+            if (peers.size < 200) peers.add(m.from);
+          }
+          freshIds = new Set(data.messages.map((m) => m.id));
+          syncPeerOptions();
+          render();
+        }
+        updateCount();
+      })
+      .catch((err) => {
+        failures++;
+        setStatus(failures > 2 ? "err" : "wait", failures > 2 ? String(err.message).slice(0, 60) : "retrying…");
+        // A rejected token will never recover on its own; send the user back
+        // to the gate instead of retrying forever.
+        if (failures === 2 && /token|\b401\b/i.test(String(err.message))) {
+          showGate(friendly(err));
+        }
+      })
+      .finally(() => { inFlight = false; });
+  }
+
+  function schedule() {
+    clearInterval(timer);
+    timer = setInterval(poll, 1500);
+  }
+
+  function setStatus(cls, text) {
+    $("dot").className = cls;
+    $("statusText").textContent = text;
+  }
+
+  // ---- rendering ---------------------------------------------------------
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function ago(ts) {
+    const s = Math.max(0, Math.round(Date.now() / 1000) - ts);
+    if (s < 60) return "just now";
+    const m = Math.round(s / 60);
+    if (m < 60) return `${m}m ago`;
+    const h = Math.round(m / 60);
+    if (h < 24) return `${h}h ago`;
+    return `${Math.round(h / 24)}d ago`;
+  }
+  const clock = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+  function visible() {
+    const q = $("search").value.trim().toLowerCase();
+    const who = $("peerFilter").value;
+    const kind = $("kindFilter").value;
+    return messages.filter((m) => {
+      if (who && m.from !== who && m.to !== who) return false;
+      if (kind && m.kind !== kind) return false;
+      // `#id` and `#thread` both match, so either form typed by the user works.
+      const hay = `${m.from} ${m.to} ${m.text} ${m.thread || ""} #${m.id} ${m.thread ? "#" + m.thread : ""}`.toLowerCase();
+      if (q && !hay.includes(q)) return false;
+      return true;
+    });
+  }
+
+  function updateCount() {
+    const shown = visible().length;
+    $("count").textContent = shown === messages.length
+      ? `${messages.length} message${messages.length === 1 ? "" : "s"}`
+      : `${shown} of ${messages.length}`;
+  }
+
+  let lastCount = -1;
+  function render() {
+    const rows = visible();
+    const feed = $("feed");
+    updateCount();
+
+    if (rows.length === 0) {
+      feed.innerHTML = `<div class="empty"><h2>${messages.length ? "Nothing matches those filters" : "No messages yet"}</h2>${
+        messages.length ? "Try widening the filter." : "Waiting for an instance to write something…"}</div>`;
+      lastCount = -1;
+      return;
+    }
+
+    // Only rebuild when the visible set changes; otherwise leave the DOM (and
+    // the scroll position) alone while the clock labels age.
+    if (rows.length === lastCount) { updateWhen(feed); return; }
+    lastCount = rows.length;
+    freshIds = new Set();   // the highlight only applies to the arrival that triggered this render
+
+    const atBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 80;
+    const html = rows.map((m) => {
+      const long = m.text.length > 340;
+      const thread = m.thread ? `<span class="tag">#${esc(m.thread)}</span>` : "";
+      return `<article class="msg${m.to === "*" ? " broadcast" : ""}${freshIds.has(m.id) ? " fresh" : ""}" data-id="${m.id}">
+        <div class="meta">
+          <span class="who">${esc(m.from)}</span>
+          <span class="who to">→ ${m.to === "*" ? "everyone" : esc(m.to)}</span>
+          <span class="tag ${esc(m.kind)}">${esc(m.kind)}</span>
+          ${thread}
+          <span class="when" title="${clock(m.ts)}">#${m.id} · ${ago(m.ts)}</span>
+        </div>
+        <div class="text${long ? " clamped" : ""}">${esc(m.text)}</div>
+        ${long ? '<button class="more">show more</button>' : ""}
+      </article>`;
+    }).join("");
+
+    feed.innerHTML = html;
+    if (atBottom) feed.scrollTop = feed.scrollHeight;
+  }
+
+  function updateWhen(feed) {
+    const now = Date.now();
+    for (const el of feed.querySelectorAll(".when")) {
+      const id = Number(el.closest(".msg").dataset.id);
+      const m = messages.find((x) => x.id === id);
+      if (m) el.textContent = `#${m.id} · ${ago(m.ts)}`;
+    }
+    if (now - lastTick > 30000) { lastTick = now; }
+  }
+  let lastTick = 0;
+
+  // ---- filters / controls ------------------------------------------------
+  // Rebuilds both dropdowns from the peers seen so far. The "all" and
+  // "choose a recipient" entries must keep an EMPTY value, otherwise they
+  // become real filter criteria / a real send address.
+  function syncPeerOptions() {
+    const names = [...peers].sort();
+
+    const build = (sel, entries) => {
+      const keep = sel.value;
+      sel.innerHTML = entries
+        .map(([value, label]) => `<option value="${esc(value)}">${esc(label)}</option>`)
+        .join("");
+      if (keep && entries.some(([v]) => v === keep)) sel.value = keep;
+    };
+
+    build($("peerFilter"), [["", "Everyone"], ...names.map((n) => [n, n])]);
+    build($("sendTo"), names.length
+      ? names.map((n) => [n, n])
+      : [["", "no peers seen yet"]]);
+
+    // Offer only the kinds actually present, so the filter can't select a
+    // value that isn't in the list.
+    const used = [...new Set(messages.map((m) => m.kind))].sort();
+    const kindSel = $("kindFilter");
+    const keepKind = kindSel.value;
+    kindSel.innerHTML = [["", "All kinds"], ...used.map((k) => [k, k])]
+      .map(([value, label]) => `<option value="${esc(value)}">${esc(label)}</option>`)
+      .join("");
+    kindSel.value = used.includes(keepKind) ? keepKind : "";
+  }
+
+  $("feed").addEventListener("click", (e) => {
+    if (!e.target.classList.contains("more")) return;
+    const box = e.target.previousElementSibling;
+    box.classList.toggle("clamped");
+    e.target.textContent = box.classList.contains("clamped") ? "show more" : "show less";
+  });
+
+  for (const id of ["search", "peerFilter", "kindFilter"]) {
+    $(id).addEventListener("input", () => { lastCount = -1; render(); });
+  }
+  $("clear").addEventListener("click", () => {
+    $("search").value = ""; $("peerFilter").value = ""; $("kindFilter").value = "";
+    lastCount = -1; render();
+  });
+  $("pause").addEventListener("click", () => {
+    paused = !paused;
+    $("pause").textContent = paused ? "Paused" : "Live";
+    $("pause").setAttribute("aria-pressed", String(paused));
+    if (!paused) poll();
+  });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && !paused) poll(); });
+
+  // ---- login -------------------------------------------------------------
+  function showGate(message = "") {
+    clearInterval(timer);
+    $("gate").classList.remove("hidden");
+    $("gateErr").textContent = message;
+    $("gateToken").focus();
+  }
+
+  // Turns transport errors into something worth reading.
+  function friendly(err) {
+    const msg = String(err?.message ?? err);
+    if (/Failed to fetch|NetworkError|Load failed/i.test(msg))
+      return "Could not reach api.php. Check the URL, your connection, and that the host is serving PHP.";
+    if (/\b401\b|token/i.test(msg))
+      return "That token was refused. It must match BUS_TOKEN at the top of api.php.";
+    if (/JSON|Unexpected token/i.test(msg))
+      return "That URL did not return JSON — it is probably not api.php.";
+    return msg;
+  }
+
+  $("gateForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("gateErr").textContent = "";
+    const next = {
+      token: $("gateToken").value.trim(),
+      url: $("gateUrl").value.trim() || DEFAULT_API,
+      me: $("gateMe").value.trim(),
+    };
+    if (!next.token) { $("gateErr").textContent = "A token is required."; return; }
+
+    const prev = cfg;
+    cfg = next;
+    $("gateBtn").disabled = true;
+    try {
+      // `health` needs no token, so it cannot prove the token is right. Pair it
+      // with an authenticated call, otherwise a bad token looks like a success
+      // and only fails later when the first poll 401s.
+      const [data, probe] = await Promise.all([
+        api("health"),
+        api("peers", { to: next.me || "_viewer_probe" }),
+      ]);
+      if (data.configured === false) throw new Error("The server still has the placeholder BUS_TOKEN.");
+      if (data.storePublic === true) throw new Error("The message store is inside the web root and publicly readable.");
+      if (probe.ok !== true) throw new Error(probe.error || "The token was refused.");
+      saveCfg(cfg);
+      enter();
+    } catch (err) {
+      cfg = prev;                       // never persist credentials that failed
+      $("gateErr").textContent = friendly(err);
+    } finally {
+      $("gateBtn").disabled = false;
+    }
+  });
+
+  $("gateForget").addEventListener("click", () => {
+    localStorage.removeItem(LS);
+    $("gateToken").value = ""; $("gateErr").textContent = "Saved settings cleared.";
+  });
+
+  function enter() {
+    messages = []; cursor = 0; peers = new Set(); lastCount = -1; freshIds = new Set();
+    $("gate").classList.add("hidden");
+    $("meLabel").textContent = cfg.me ? `· ${cfg.me}` : "";
+    $("count").textContent = "";
+    syncPeerOptions();
+    poll();
+    schedule();
+  }
+
+  $("logout").addEventListener("click", () => {
+    paused = false;
+    $("pause").textContent = "Live";
+    $("pause").setAttribute("aria-pressed", "false");
+    messages = []; cursor = 0; peers = new Set(); lastCount = -1;
+    cfg = { token: "", url: "", me: "" };
+    render();
+    syncPeerOptions();
+    showGate();
+  });
+
+  // ---- sending -----------------------------------------------------------
+  $("sendForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = $("sendText").value.trim();
+    const to = $("sendTo").value;
+    if (!text || !to) return;
+    const btn = $("sendBtn");
+    btn.disabled = true;
+    try {
+      await api("send", {
+        from: cfg.me || "human",
+        to,
+        text,
+        kind: $("sendKind").value,
+        thread: $("sendThread").value.trim(),
+      }, "POST");
+      $("sendText").value = "";
+      poll();          // show it immediately instead of waiting for the next tick
+    } catch (err) {
+      alert(`Could not send: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // Cmd/Ctrl+Enter to send.
+  $("sendText").addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") $("sendForm").requestSubmit();
+  });
+
+  // ---- boot --------------------------------------------------------------
+  (function boot() {
+    const saved = loadCfg();
+    $("gateToken").value = saved.token || "";
+    $("gateUrl").value = saved.url && saved.url !== DEFAULT_API ? saved.url : "";
+    $("gateMe").value = saved.me || "";
+    // Only expand Advanced when it holds something non-default.
+    if ($("gateUrl").value) $("gateAdvanced").open = true;
+    if (saved.token) {
+      cfg = saved;
+      enter();
+    } else {
+      showGate();
+    }
+    // Keep relative timestamps honest without re-fetching.
+    setInterval(() => { if (!document.hidden) updateWhen($("feed")); }, 20000);
+  })();
+})();
+</script>
+</body>
+</html>

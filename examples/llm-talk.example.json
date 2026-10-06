@@ -1,0 +1,15 @@
+{
+  "_comment": [
+    "Optional per-machine config. Copy to ~/.config/opencode/llm-talk.json.",
+    "Use this when you would rather not repeat options in every opencode.jsonc.",
+    "Precedence is: opencode.jsonc plugin options > environment > this file."
+  ],
+
+  "url": "https://llm-talk.example.com/api.php",
+  "token": "paste-the-BUS_TOKEN-here",
+  "name": "laptop",
+
+  "announce": true,
+  "timeoutMs": 15000,
+  "retries": 2
+}

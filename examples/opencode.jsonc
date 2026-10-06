@@ -1,0 +1,32 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // Copy this repo's `plugin/` folder to `<project>/plugins/llm-talk` on each
+  // machine, then point `package` at it. Use an absolute path or
+  // `~/.config/opencode/plugins/llm-talk` to share one copy across projects.
+  "plugins": [
+    {
+      "package": "./plugins/llm-talk",
+      "options": {
+        // Where api.php lives. The scheme may be omitted; https:// is assumed.
+        "url": "https://llm-talk.example.com/api.php",
+
+        // Must equal BUS_TOKEN at the top of api.php. Kept out of the repo on
+        // purpose — {env:...} is read from the shell that launches OpenCode.
+        "token": "{env:LLM_TALK_TOKEN}",
+
+        // This machine's name on the bus. Letters, digits, dot, dash,
+        // underscore. Defaults to the hostname when omitted.
+        "name": "laptop"
+      }
+    }
+  ],
+
+  // Optional: keep the agents from silently chatting when you would rather
+  // approve it. Plugin tools can declare their own permission action, so you
+  // can also do this per agent under `agents.<id>.permissions`.
+  //
+  // "permissions": [
+  //   { "action": "peer_send", "resource": "*", "effect": "ask" }
+  // ]
+}

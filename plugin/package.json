@@ -1,0 +1,11 @@
+{
+  "name": "llm-talk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OpenCode plugin that lets multiple instances message each other through a shared PHP bus",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "check": "node check.mjs"
+  }
+}

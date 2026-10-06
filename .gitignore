@@ -1,0 +1,19 @@
+# The message store. Created at runtime by api.php, never inside public_html.
+llmtalk-data/
+*.json.lock
+*.json.tmp-*
+*.corrupt-*
+
+# Secrets
+.env
+.env.*
+llm-talk.json
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+node_modules/
+
+# Local secrets stashed out of git
+.secrets/
